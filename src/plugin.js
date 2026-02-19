@@ -1,71 +1,75 @@
 'use strict'
 
-// A Tropy plugin is a regular Node.js module. Because of the way the plugin
-// is loaded into Tropy this has to be a CommonJS module. You can use `require`
-// to access the Node.js and Electron APIs or any files bundled with your plugin.
+const fs = require('fs')
+const path = require('path')
 
-class ExamplePlugin {
+const SUPPORTED_EXTENSIONS = new Set([
+  '.jpg', '.jpeg', '.png', '.svg', '.tiff', '.tif',
+  '.gif', '.pdf', '.jp2', '.webp', '.heic', '.avif'
+])
 
-  // A Tropy plugin is JavaScript class/constructor function. An instance will be
-  // created at start-up in each project window for each set of `options` configured
-  // in the plugin section of Tropy's preferences window.
+function walk(dir) {
+  const results = []
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name)
+    if (entry.isDirectory()) {
+      results.push(...walk(fullPath))
+    } else if (entry.isFile()) {
+      if (SUPPORTED_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+        results.push(fullPath)
+      }
+    }
+  }
+  return results
+}
+
+class ListsPlugin {
+
   constructor(options, context) {
-
-    // It is good practice to define a default configuration to use as a fallback
-    // in case some options are left blank.
-    this.options = Object.assign({}, ExamplePlugin.defaults, options)
-
-    // The plugin instance receives a `context` object from Tropy. Typically,
-    // you will store a reference here, so that you can use it later when a
-    // hook is triggered.
+    this.options = Object.assign({}, ListsPlugin.defaults, options)
     this.context = context
-
-    // The sample plugin just prints the constructor arguments to the console
-    // for instructional purposes. You can see it in Tropy if you reload the
-    // project window while the DevTools are open.
-    console.log('Constructed example plugin with options and context:')
-    console.log(this.options)
-    console.log(this.context)
   }
 
-  // This method gets called when the export hook is triggered.
-  async export(data) {
-    // Here we write directly to Tropy's log file (via the context object)
-    this.context.logger.trace('Called export hook from example plugin')
-
-    // This logs the data supplied to the export hook. The data includes
-    // the currently selected Tropy items (or all items, if none are currently
-    // selected and you triggered the export via the menu).
-    console.log(data)
-  }
-
-  // This method gets called when the import hook is triggered.
   async import(payload) {
-    this.logger.trace('Called import hook from example plugin')
+    this.context.logger.trace('Called import hook from plugin-lists')
 
-    // This logs the payload received by the import hook. After this method
-    // completes, Tropy's import command will continue its work with this
-    // payload.
-    console.log(payload)
+    const result = await this.context.dialog.open({
+      properties: ['openDirectory']
+    })
 
-    // After this method completes, Tropy's import command will continue its
-    // work with this payload. To have Tropy import JSON-LD data, you can
-    // add it here:
-    payload.data = [
-      // Add your items here!
-    ]
+    if (!result || !result.length) return
 
-    // Alternatively, to import a list of supported local files or remote
-    // URLs you can add the respective arrays instead:
-    //
-    // payload.files = []
-    // payload.urls = []
+    const dir = result[0]
+    const files = walk(dir)
+
+    const graph = await Promise.all(files.map(async (filePath) => {
+      const relDir = path.relative(dir, path.dirname(filePath))
+      const list = relDir ? [relDir] : []
+      const title = path.basename(filePath, path.extname(filePath))
+
+      if (path.extname(filePath).toLowerCase() === '.pdf') {
+        const sharp = await this.context.sharp.open(filePath)
+        const { pages = 1 } = await sharp.metadata()
+        const photo = Array.from({ length: pages }, (_, page) => ({
+          "http://purl.org/dc/elements/1.1/title": title,
+          path: filePath,
+          mimetype: 'application/pdf',
+          page
+        }))
+        return { photo, list, "http://purl.org/dc/elements/1.1/title": title }
+      }
+
+      return {
+        photo: [{ path: filePath, "http://purl.org/dc/elements/1.1/title": title }],
+        list,
+        "http://purl.org/dc/elements/1.1/title": title
+      }
+    }))
+    console.log(graph)
+    payload.data = [{ '@graph': graph }]
   }
 }
 
-ExamplePlugin.defaults = {
-  clipboard: false
-}
+ListsPlugin.defaults = {}
 
-// The plugin must be the module's default export.
-module.exports = ExamplePlugin
+module.exports = ListsPlugin
