@@ -83,7 +83,6 @@ class ListsPlugin {
         [`${DC}title`]: title
       }
     }))
-    console.log(graph)
     payload.data = [{ '@graph': graph }]
   }
 }
