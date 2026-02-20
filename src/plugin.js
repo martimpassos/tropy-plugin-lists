@@ -3,6 +3,9 @@
 const fs = require('fs')
 const path = require('path')
 
+const DC = 'http://purl.org/dc/elements/1.1/'
+const EXIF = 'http://ns.adobe.com/exif/1.0/'
+
 const SUPPORTED_EXTENSIONS = new Set([
   '.jpg', '.jpeg', '.png', '.svg', '.tiff', '.tif',
   '.gif', '.pdf', '.jp2', '.webp', '.heic', '.avif'
@@ -32,6 +35,7 @@ class ListsPlugin {
 
   async import(payload) {
     this.context.logger.trace('Called import hook from plugin-lists')
+    console.log(this.context)
 
     const result = await this.context.dialog.open({
       properties: ['openDirectory']
@@ -47,22 +51,36 @@ class ListsPlugin {
       const list = relDir ? [relDir] : []
       const title = path.basename(filePath, path.extname(filePath))
 
+      const sharp = await this.context.sharp.open(filePath)
+      const metadata = await sharp.metadata()
+
+      let date
+      try {
+        const xif = metadata?.exif
+        date = xif?.[`${EXIF}DateTimeOriginal`]?.text ||
+          xif?.[`${EXIF}DateTime`]?.text ||
+          fs.statSync(filePath).mtime.toISOString()
+      } catch (e) {
+        date = new Date().toISOString()
+      }
+
       if (path.extname(filePath).toLowerCase() === '.pdf') {
-        const sharp = await this.context.sharp.open(filePath)
-        const { pages = 1 } = await sharp.metadata()
+        const { pages = 1 } = metadata
         const photo = Array.from({ length: pages }, (_, page) => ({
-          "http://purl.org/dc/elements/1.1/title": title,
+          [`${DC}date`]: date,
+          [`${DC}title`]: title,
           path: filePath,
           mimetype: 'application/pdf',
+          // density: this.options.density || 72,
           page
         }))
-        return { photo, list, "http://purl.org/dc/elements/1.1/title": title }
+        return { photo, list, [`${DC}title`]: title }
       }
 
       return {
-        photo: [{ path: filePath, "http://purl.org/dc/elements/1.1/title": title }],
+        photo: [{ path: filePath, [`${DC}date`]: date, [`${DC}title`]: title }],
         list,
-        "http://purl.org/dc/elements/1.1/title": title
+        [`${DC}title`]: title
       }
     }))
     console.log(graph)
