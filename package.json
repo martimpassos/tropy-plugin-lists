@@ -25,7 +25,7 @@
   },
   "homepage": "https://github.com/tropy/tropy-plugin-example#readme",
   "hooks": {
-    "export": true,
+    "export": false,
     "import": true
   },
   "options": [
