@@ -11,6 +11,10 @@ const SUPPORTED_EXTENSIONS = new Set([
   '.gif', '.pdf', '.jp2', '.webp', '.heic', '.avif'
 ])
 
+const normalizePath = process.platform === 'darwin'
+  ? (p) => p.replace(/:/g, '\\')
+  : (p) => p
+
 function walk(dir) {
   const results = []
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -48,7 +52,7 @@ class ListsPlugin {
 
     const graph = await Promise.all(files.map(async (filePath) => {
       const relDir = path.relative(dir, path.dirname(filePath))
-      const list = relDir ? [relDir] : []
+      const list = relDir ? [normalizePath(relDir)] : []
       const title = path.basename(filePath, path.extname(filePath))
 
       const sharp = await this.context.sharp.open(filePath)
