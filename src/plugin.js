@@ -12,7 +12,7 @@ const SUPPORTED_EXTENSIONS = new Set([
 ])
 
 const normalizePath = process.platform === 'darwin'
-  ? (p) => p.replace(/:/g, '\\')
+  ? (p) => p.replace(/:/g, '\\/')
   : (p) => p
 
 function walk(dir) {
